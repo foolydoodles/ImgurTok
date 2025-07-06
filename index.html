@@ -225,6 +225,15 @@
     </div>
 
 <script>
+    // Register Service Worker for caching
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(function(registration) {
+            console.log('Service Worker registered with scope:', registration.scope);
+        }).catch(function(error) {
+            console.log('Service Worker registration failed:', error);
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         // --- Element References ---
         const contentContainer = document.getElementById('content-container');
@@ -404,7 +413,8 @@
                 video.muted = isGloballyMuted;
                 video.autoplay = false;
                 video.preload = 'metadata'; // Start by loading only metadata
-                video.src = itemData.link;
+                video.src = itemData.mp4.replace('http://', 'https://'); // Use mobile-friendly version first
+                video.dataset.hdSrc = itemData.link.replace('http://', 'https://'); // Store HD version
                 video.poster = itemData.link.replace('.mp4', 'h.jpg'); // Use thumbnail as poster
                 video.setAttribute('playsinline', '');
                 video.setAttribute('webkit-playsinline', '');
@@ -451,6 +461,18 @@
             try {
                 video.muted = isGloballyMuted;
                 await video.play();
+                // Once playing, start loading the HD source in the background
+                const hdSrc = video.dataset.hdSrc;
+                if (hdSrc && video.src !== hdSrc) {
+                    const hdVideo = new Image(); // Use Image object to fetch without displaying
+                    hdVideo.src = hdSrc;
+                    hdVideo.onload = () => {
+                        const currentTime = video.currentTime;
+                        video.src = hdSrc;
+                        video.currentTime = currentTime;
+                        video.play();
+                    };
+                }
             } catch (error) {
                 if (error.name === 'NotAllowedError') {
                     // Autoplay was prevented. Mute and try again.
@@ -521,12 +543,14 @@
             });
             currentIndex = index;
 
-            // Preload the next slide's content
-            const nextSlideIndex = index + 1;
-            if (nextSlideIndex < slides.length) {
-                const nextVideo = slides[nextSlideIndex].querySelector('video');
-                if (nextVideo) {
-                    nextVideo.preload = 'auto';
+            // Aggressive preloading
+            for (let i = 1; i <= 3; i++) {
+                const nextSlideIndex = index + i;
+                if (nextSlideIndex < slides.length) {
+                    const nextVideo = slides[nextSlideIndex].querySelector('video');
+                    if (nextVideo) {
+                        nextVideo.preload = 'auto';
+                    }
                 }
             }
 
@@ -655,6 +679,45 @@
         // --- Initial Setup ---
         updateMuteButton();
         fetchContent(true);
+    });
+</script>
+<script>
+    // --- Service Worker ---
+    const CACHE_NAME = 'imgur-viewer-cache-v1';
+    const urlsToCache = [
+        '/',
+        'https://cdn.tailwindcss.com',
+        'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+    ];
+
+    self.addEventListener('install', event => {
+        event.waitUntil(
+            caches.open(CACHE_NAME)
+                .then(cache => {
+                    console.log('Opened cache');
+                    return cache.addAll(urlsToCache);
+                })
+        );
+    });
+
+    self.addEventListener('fetch', event => {
+        // We only want to cache GET requests for images and videos from Imgur
+        if (event.request.method === 'GET' && event.request.url.includes('i.imgur.com')) {
+            event.respondWith(
+                caches.open(CACHE_NAME).then(cache => {
+                    return cache.match(event.request).then(response => {
+                        // Return from cache if available, otherwise fetch from network and cache
+                        return response || fetch(event.request).then(networkResponse => {
+                            cache.put(event.request, networkResponse.clone());
+                            return networkResponse;
+                        });
+                    });
+                })
+            );
+        } else {
+            // For all other requests, just fetch from the network
+            event.respondWith(fetch(event.request));
+        }
     });
 </script>
 </body>
