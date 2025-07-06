@@ -184,6 +184,9 @@
              <button id="mute-btn" title="Mute/Unmute" class="bg-[#1A1A1B]/80 p-3 rounded-full hover:bg-[#1BB76E] transition-colors">
                 <!-- Icon will be set by JS -->
             </button>
+            <button id="download-btn" title="Download" class="bg-[#1A1A1B]/80 p-3 rounded-full hover:bg-[#1BB76E] transition-colors">
+                <!-- Icon will be set by JS -->
+            </button>
         </div>
         <div class="absolute top-4 right-4 z-30">
             <button id="search-btn" title="Search" class="bg-[#1A1A1B]/80 p-3 rounded-full hover:bg-[#1BB76E] transition-colors">
@@ -243,6 +246,7 @@
         const searchInput = document.getElementById('search-input');
         const closeSearchBtn = document.getElementById('close-search-btn');
         const muteBtn = document.getElementById('mute-btn');
+        const downloadBtn = document.getElementById('download-btn');
         
         // --- State Variables ---
         let isLoadingMore = false;
@@ -260,6 +264,7 @@
         // --- Icon Definitions ---
         const volumeUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd" /></svg>`;
         const volumeOffIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+        const downloadIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>`;
 
         /**
          * Shows a toast notification.
@@ -600,6 +605,29 @@
             muteBtn.innerHTML = isGloballyMuted ? volumeOffIcon : volumeUpIcon;
         }
 
+        async function downloadFile(url, filename) {
+            showStatus('Downloading...');
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok.');
+                const blob = await response.blob();
+                const objectUrl = window.URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = objectUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(objectUrl);
+                a.remove();
+                showStatus('Download started!');
+            } catch (error) {
+                console.error('Download failed:', error);
+                showStatus('Download failed.', true);
+            }
+        }
+
         // --- Event Listener Setup ---
         searchBtn.addEventListener('click', openSearch);
         closeSearchBtn.addEventListener('click', closeSearch);
@@ -618,6 +646,32 @@
             const activeVideo = document.querySelector('.content-slide.active .album-item.active video');
             if (activeVideo) {
                 activeVideo.muted = isGloballyMuted;
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const activeItem = document.querySelector('.content-slide.active .album-item.active');
+            if (!activeItem) return;
+
+            const video = activeItem.querySelector('video');
+            const img = activeItem.querySelector('img');
+            
+            let downloadUrl;
+            let filename = 'imgur-download';
+
+            if (video) {
+                downloadUrl = video.dataset.hdSrc || video.src;
+                filename += '.mp4';
+            } else if (img) {
+                downloadUrl = img.src;
+                const extension = img.src.split('.').pop().split('?')[0];
+                filename += `.${extension}`;
+            }
+
+            if (downloadUrl) {
+                downloadFile(downloadUrl, filename);
+            } else {
+                showStatus('No downloadable content found.', true);
             }
         });
 
@@ -665,6 +719,7 @@
 
         // --- Initial Setup ---
         updateMuteButton();
+        downloadBtn.innerHTML = downloadIcon;
         fetchContent(true);
     });
 </script>
