@@ -137,6 +137,28 @@
         .album-item.paused .play-overlay {
             display: flex;
         }
+        
+        .loading-spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            transform: translate(-50%, -50%);
+        }
+        
+        .album-item.buffering .loading-spinner {
+            display: block;
+        }
+
+        @keyframes spin {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
 
         /* ASCII Art Animation */
         @keyframes fill-up {
@@ -381,8 +403,9 @@
                 video.controls = false;
                 video.muted = isGloballyMuted;
                 video.autoplay = false;
-                video.preload = 'metadata';
+                video.preload = 'metadata'; // Start by loading only metadata
                 video.src = itemData.link;
+                video.poster = itemData.link.replace('.mp4', 'h.jpg'); // Use thumbnail as poster
                 video.setAttribute('playsinline', '');
                 video.setAttribute('webkit-playsinline', '');
                 itemContainer.appendChild(video);
@@ -391,9 +414,15 @@
                 playOverlay.className = 'play-overlay';
                 playOverlay.innerHTML = `<svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" /></svg>`;
                 itemContainer.appendChild(playOverlay);
+                
+                const spinner = document.createElement('div');
+                spinner.className = 'loading-spinner';
+                itemContainer.appendChild(spinner);
 
                 video.onplay = () => itemContainer.classList.remove('paused');
                 video.onpause = () => itemContainer.classList.add('paused');
+                video.onwaiting = () => itemContainer.classList.add('buffering');
+                video.onplaying = () => itemContainer.classList.remove('buffering');
                 
                 itemContainer.addEventListener('click', (e) => {
                     if (e.target.closest('.album-nav-btn')) return;
@@ -437,7 +466,7 @@
                         }
                     }
                 } else if (error.name !== 'AbortError') {
-                    console.error('Video play failed:', error);
+                    // console.error('Video play failed:', error); // This can be noisy
                 }
             }
         }
@@ -491,6 +520,15 @@
                 }
             });
             currentIndex = index;
+
+            // Preload the next slide's content
+            const nextSlideIndex = index + 1;
+            if (nextSlideIndex < slides.length) {
+                const nextVideo = slides[nextSlideIndex].querySelector('video');
+                if (nextVideo) {
+                    nextVideo.preload = 'auto';
+                }
+            }
 
             if (slides.length > 1 && slides.length - currentIndex < 5) {
                 fetchContent(false);
