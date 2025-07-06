@@ -413,8 +413,7 @@
                 video.muted = isGloballyMuted;
                 video.autoplay = false;
                 video.preload = 'metadata'; // Start by loading only metadata
-                video.src = itemData.mp4.replace('http://', 'https://'); // Use mobile-friendly version first
-                video.dataset.hdSrc = itemData.link.replace('http://', 'https://'); // Store HD version
+                video.src = itemData.mp4;
                 video.poster = itemData.link.replace('.mp4', 'h.jpg'); // Use thumbnail as poster
                 video.setAttribute('playsinline', '');
                 video.setAttribute('webkit-playsinline', '');
@@ -461,18 +460,6 @@
             try {
                 video.muted = isGloballyMuted;
                 await video.play();
-                // Once playing, start loading the HD source in the background
-                const hdSrc = video.dataset.hdSrc;
-                if (hdSrc && video.src !== hdSrc) {
-                    const hdVideo = new Image(); // Use Image object to fetch without displaying
-                    hdVideo.src = hdSrc;
-                    hdVideo.onload = () => {
-                        const currentTime = video.currentTime;
-                        video.src = hdSrc;
-                        video.currentTime = currentTime;
-                        video.play();
-                    };
-                }
             } catch (error) {
                 if (error.name === 'NotAllowedError') {
                     // Autoplay was prevented. Mute and try again.
