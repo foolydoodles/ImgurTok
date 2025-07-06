@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>TikTok Style Imgur Browser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* This CSS sets up the main application layout.
+           It's mobile-first, meaning the base styles are for small screens.
+           On larger screens (desktops/tablets), a media query constrains the app
+           to a phone-like aspect ratio and centers it, creating black bars on the sides.
+         */
+        html, body {
+            height: 100dvh; /* Use dynamic viewport height for mobile compatibility */
+            overflow: hidden; /* Prevents scrolling the whole page */
+            background-color: #000; /* Body background color for "black bars" on desktop */
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Base style for the container (mobile-first) - will fill screen by default */
+        #app-container {
+            position: relative;
+            overflow: hidden;
+            width: 100vw; /* Always fill viewport width on mobile */
+            height: 100dvh; /* Use dynamic viewport height here too */
+            background-color: #000; /* Ensure the app itself has a black background */
+        }
+
+        /* On wider screens (tablets/desktops), constrain the container to a phone-like aspect ratio and center */
+        @media (min-width: 600px) {
+            #app-container {
+                aspect-ratio: 9 / 16; /* Maintain 9:16 aspect ratio */
+                height: 90vh; /* Use a percentage of the viewport height */
+                width: auto; /* Let height and aspect ratio dictate width */
+                max-width: 90vw; /* Prevent it from becoming too wide */
+                border-radius: 20px; /* Rounded corners for a device-like feel */
+                /* Center the container on wider screens */
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        /* The main container for the content slides */
+        #content-container {
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Visibility is controlled via JS */
+            position: relative;
+        }
+
+        /* Each individual content slide */
+        .content-slide {
+            height: 100%;
+            width: 100%;
+            position: absolute; /* Position slides absolutely within content-container */
+            top: 0;
+            left: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .content-slide.active {
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 2;
+        }
+        
+        .album-container {
+            height: 100%;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .album-item {
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+        }
+        
+        .album-item.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Video/Image element styling */
+        video, img {
+            width: 100%;
+            height: 100%;
+            display: block; /* Removes any extra space below the element */
+        }
+        video {
+            object-fit: cover; /* Cover the area, cropping if necessary */
+        }
+        img {
+            object-fit: contain; /* Show the whole image, letterboxed if needed */
+        }
+
+
+        /* Play icon overlay shown when video is paused */
+        .play-overlay {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 50%;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .album-item.paused .play-overlay {
+            display: flex;
+        }
+
+        /* ASCII Art Animation */
+        @keyframes fill-up {
+            0% { background-position: 100% 0; }
+            100% { background-position: 0 0; }
+        }
+
+        #ascii-art {
+            background: linear-gradient(to right, #85BF25 50%, #000000 50%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: fill-up 3s linear infinite;
+        }
+    </style>
+</head>
+<body class="text-white bg-black">
+
+    <div id="app-container">
+        <!-- UI Buttons -->
+        <div class="absolute top-4 left-4 z-30 flex gap-4">
+             <button id="mute-btn" title="Mute/Unmute" class="bg-[#1A1A1B]/80 p-3 rounded-full hover:bg-[#1BB76E] transition-colors">
+                <!-- Icon will be set by JS -->
+            </button>
+        </div>
+        <div class="absolute top-4 right-4 z-30">
+            <button id="search-btn" title="Search" class="bg-[#1A1A1B]/80 p-3 rounded-full hover:bg-[#1BB76E] transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </button>
+        </div>
+
+        <main id="content-container">
+            <div id="placeholder" class="content-slide active flex flex-col justify-center items-center text-center text-gray-300 p-8">
+                <pre id="ascii-art" class="text-xs md:text-sm leading-tight text-center mb-6 font-mono">
+    ___                            
+   /   |  _________  ____  ____ _   
+  / /| | / ___/ __ \/ __ \/ __ `/   
+ / ___ |/ /  / /_/ / / / / /_/ /    
+/_/  |_/_/   \____/_/ /_/\__,_/     
+                                   
+</pre>
+                <p class="mb-8 max-w-sm">Loading viral content from Imgur...</p>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Search Overlay -->
+    <div id="search-overlay" class="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm hidden flex-col justify-center items-center p-4">
+        <button id="close-search-btn" class="absolute top-6 right-6 text-gray-400 hover:text-white transition-colors">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+        <h2 class="text-3xl font-bold mb-6">Search Imgur</h2>
+        <input type="text" id="search-input" placeholder="Search for anything..." class="w-full max-w-lg text-center text-xl p-4 bg-gray-800 border border-gray-700 rounded-full focus:ring-2 focus:ring-[#1BB76E] focus:border-[#1BB76E] transition text-white">
+    </div>
+
+
+    <div id="status-toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#272729] text-white px-4 py-2 rounded-lg shadow-lg opacity-0 transition-opacity duration-300 z-50">
+        Status message
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Element References ---
+        const contentContainer = document.getElementById('content-container');
+        const statusToast = document.getElementById('status-toast');
+        const searchBtn = document.getElementById('search-btn');
+        const searchOverlay = document.getElementById('search-overlay');
+        const searchInput = document.getElementById('search-input');
+        const closeSearchBtn = document.getElementById('close-search-btn');
+        const muteBtn = document.getElementById('mute-btn');
+        
+        // --- State Variables ---
+        let isLoadingMore = false;
+        let currentIndex = 0;
+        let isNavigating = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let currentPage = 0;
+        let currentSearchQuery = null;
+        let isGloballyMuted = false;
+
+        // --- Imgur API Configuration ---
+        const IMGUR_CLIENT_ID = '546c25a59c58ad7'; 
+
+        // --- Icon Definitions ---
+        const volumeUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd" /></svg>`;
+        const volumeOffIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+
+        /**
+         * Shows a toast notification.
+         */
+        function showStatus(message, isError = false) {
+            statusToast.textContent = message;
+            statusToast.className = `fixed bottom-5 left-1/2 -translate-x-1/2 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-50 ${isError ? 'bg-red-600' : 'bg-[#1BB76E]'}`;
+            statusToast.classList.remove('opacity-0');
+            setTimeout(() => statusToast.classList.add('opacity-0'), 3000);
+        }
+        
+        const isSupportedContent = item => {
+            if (item.is_album) {
+                return item.images && item.images.length > 0 && item.images.some(img => isSupportedContent(img));
+            }
+            return item.link && (item.type === 'image/jpeg' || item.type === 'image/png' || item.type === 'image/gif' || item.type === 'video/mp4');
+        };
+
+        /**
+         * Fetches content from the Imgur API, either from the viral gallery or a search query.
+         */
+        async function fetchContent(isNewFeed = false) {
+            if (isLoadingMore) return;
+            isLoadingMore = true;
+
+            if (isNewFeed) {
+                clearFeed();
+                showStatus(currentSearchQuery ? `Searching for "${currentSearchQuery}"...` : 'Fetching viral content...');
+                currentPage = 0;
+            }
+
+            let url;
+            if (currentSearchQuery) {
+                url = `https://api.imgur.com/3/gallery/search/viral/${currentPage}?q=${encodeURIComponent(currentSearchQuery)}`;
+            } else {
+                url = `https://api.imgur.com/3/gallery/hot/viral/${currentPage}.json`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Client-ID ${IMGUR_CLIENT_ID}` }
+                });
+                if (!response.ok) throw new Error(`Could not fetch content from Imgur.`);
+                
+                const data = await response.json();
+                if (!data.success) throw new Error('Imgur API returned an error.');
+
+                const posts = data.data;
+                const filteredContent = posts.filter(isSupportedContent);
+
+                if (filteredContent.length === 0) {
+                    if (isNewFeed) showStatus(`No results found for "${currentSearchQuery}".`, true);
+                    else showStatus('No more content to load.');
+                    return;
+                }
+                
+                const placeholder = document.getElementById('placeholder');
+                if (placeholder) placeholder.remove();
+                
+                appendContent(filteredContent);
+
+                if (isNewFeed) {
+                    showSlide(0);
+                    showStatus(`Loaded ${filteredContent.length} posts.`);
+                }
+                currentPage++;
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showStatus(error.message, true);
+            } finally {
+                isLoadingMore = false;
+            }
+        }
+
+        /**
+         * Clears the content feed and resets state variables.
+         */
+        function clearFeed() {
+            contentContainer.innerHTML = '';
+            currentIndex = 0;
+            currentPage = 0;
+        }
+
+        /**
+         * Appends content (videos or images) as slides to the container.
+         */
+        function appendContent(content) {
+            content.forEach((postData) => {
+                const slide = document.createElement('div');
+                slide.id = `slide-${postData.id}`;
+                slide.className = 'content-slide';
+                
+                if (postData.is_album) {
+                    slide.dataset.isAlbum = 'true';
+                    slide.dataset.albumIndex = '0';
+                    const albumContainer = document.createElement('div');
+                    albumContainer.className = 'album-container';
+                    
+                    const validImages = postData.images.filter(isSupportedContent);
+
+                    validImages.forEach((albumImgData, index) => {
+                        const albumItem = createAlbumItem(albumImgData);
+                        if (index === 0) albumItem.classList.add('active');
+                        albumContainer.appendChild(albumItem);
+                    });
+                    slide.appendChild(albumContainer);
+
+                    if (validImages.length > 1) {
+                        const albumNav = `
+                            <button class="album-nav-btn absolute top-1/2 -translate-y-1/2 left-4 z-10 text-white bg-black/30 hover:bg-black/60 rounded-full p-2 transition-colors" data-direction="-1" style="display: none;">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <button class="album-nav-btn absolute top-1/2 -translate-y-1/2 right-4 z-10 text-white bg-black/30 hover:bg-black/60 rounded-full p-2 transition-colors" data-direction="1">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </button>
+                        `;
+                        slide.insertAdjacentHTML('beforeend', albumNav);
+                        
+                        const albumCounter = document.createElement('div');
+                        albumCounter.className = 'album-counter absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-2 py-1 rounded-full';
+                        albumCounter.textContent = `1 / ${validImages.length}`;
+                        slide.appendChild(albumCounter);
+                    }
+
+                } else {
+                    const singleItem = createAlbumItem(postData);
+                    singleItem.classList.add('active');
+                    slide.appendChild(singleItem);
+                }
+
+                const infoOverlay = `
+                    <div class="absolute bottom-0 left-0 right-0 p-4 pb-6 bg-gradient-to-t from-black/80 to-transparent text-white">
+                        <h3 class="font-bold text-lg leading-tight pointer-events-none">${postData.title || 'Untitled'}</h3>
+                    </div>`;
+                slide.insertAdjacentHTML('beforeend', infoOverlay);
+                
+                contentContainer.appendChild(slide);
+            });
+        }
+        
+        function createAlbumItem(itemData) {
+            const itemContainer = document.createElement('div');
+            itemContainer.className = 'album-item';
+            
+            if (itemData.type === 'video/mp4') {
+                itemContainer.classList.add('paused'); // Start as paused to show overlay
+                const video = document.createElement('video');
+                video.loop = true;
+                video.controls = false;
+                video.muted = isGloballyMuted;
+                video.autoplay = false;
+                video.preload = 'metadata';
+                video.src = itemData.link;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                itemContainer.appendChild(video);
+
+                const playOverlay = document.createElement('div');
+                playOverlay.className = 'play-overlay';
+                playOverlay.innerHTML = `<svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" /></svg>`;
+                itemContainer.appendChild(playOverlay);
+
+                video.onplay = () => itemContainer.classList.remove('paused');
+                video.onpause = () => itemContainer.classList.add('paused');
+                
+                itemContainer.addEventListener('click', (e) => {
+                    if (e.target.closest('.album-nav-btn')) return;
+                    if (video.paused) {
+                        playVideo(video);
+                    } else {
+                        video.pause();
+                    }
+                });
+
+            } else {
+                const img = document.createElement('img');
+                img.src = itemData.link;
+                img.alt = itemData.description || 'Imgur Content';
+                img.onerror = (e) => { e.target.closest('.album-item').remove(); showStatus('Image failed to load.', true); };
+                itemContainer.appendChild(img);
+            }
+            return itemContainer;
+        }
+
+        /**
+         * Safely plays a video, handling autoplay restrictions.
+         * @param {HTMLVideoElement} video - The video element to play.
+         */
+        async function playVideo(video) {
+            try {
+                video.muted = isGloballyMuted;
+                await video.play();
+            } catch (error) {
+                if (error.name === 'NotAllowedError') {
+                    // Autoplay was prevented. Mute and try again.
+                    isGloballyMuted = true;
+                    updateMuteButton();
+                    video.muted = true;
+                    showStatus('Video muted to allow autoplay');
+                    try {
+                        await video.play();
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            console.error('Failed to play muted video:', err);
+                        }
+                    }
+                } else if (error.name !== 'AbortError') {
+                    console.error('Video play failed:', error);
+                }
+            }
+        }
+        
+        function showAlbumItem(slide, newIndex) {
+            const albumItems = slide.querySelectorAll('.album-item');
+            const albumCounter = slide.querySelector('.album-counter');
+            const leftNav = slide.querySelector('.album-nav-btn[data-direction="-1"]');
+            const rightNav = slide.querySelector('.album-nav-btn[data-direction="1"]');
+
+            if (newIndex < 0 || newIndex >= albumItems.length) return;
+
+            albumItems.forEach((item, index) => {
+                const video = item.querySelector('video');
+                if (index === newIndex) {
+                    item.classList.add('active');
+                    if (video) {
+                        playVideo(video);
+                    }
+                } else {
+                    item.classList.remove('active');
+                    if (video) video.pause();
+                }
+            });
+
+            slide.dataset.albumIndex = newIndex;
+            if (albumCounter) albumCounter.textContent = `${newIndex + 1} / ${albumItems.length}`;
+            if(leftNav) leftNav.style.display = newIndex > 0 ? 'block' : 'none';
+            if(rightNav) rightNav.style.display = newIndex < albumItems.length - 1 ? 'block' : 'none';
+        }
+
+        /**
+         * Shows a specific slide by its index.
+         */
+        function showSlide(index) {
+            const slides = document.querySelectorAll('.content-slide:not(#placeholder)');
+            if (slides.length === 0 || index < 0 || index >= slides.length) return;
+
+            slides.forEach((slide, i) => {
+                if (i === index) {
+                    slide.classList.add('active');
+                    if (slide.dataset.isAlbum === 'true') {
+                        showAlbumItem(slide, 0); 
+                    } else {
+                       const video = slide.querySelector('video');
+                       if (video) playVideo(video);
+                    }
+                } else {
+                    slide.classList.remove('active');
+                    slide.querySelectorAll('video').forEach(v => v.pause());
+                }
+            });
+            currentIndex = index;
+
+            if (slides.length > 1 && slides.length - currentIndex < 5) {
+                fetchContent(false);
+            }
+        }
+        
+        /**
+         * Navigates to the next or previous slide.
+         */
+        function changeSlide(direction) {
+            if (isNavigating) return;
+
+            const slides = document.querySelectorAll('.content-slide:not(#placeholder)');
+            if (slides.length === 0) return;
+            let newIndex = currentIndex + direction;
+
+            if (newIndex < 0) {
+                showStatus("Already at the first post.");
+                return;
+            }
+            
+            if (direction > 0 && newIndex >= slides.length) {
+                fetchContent(false);
+                return; 
+            }
+            
+            isNavigating = true;
+            showSlide(newIndex);
+            setTimeout(() => { isNavigating = false; }, 300); 
+        }
+
+        function openSearch() {
+            searchOverlay.classList.remove('hidden');
+            searchOverlay.classList.add('flex');
+            searchInput.focus();
+        }
+
+        function closeSearch() {
+            searchOverlay.classList.add('hidden');
+            searchOverlay.classList.remove('flex');
+            searchInput.value = '';
+            if (currentSearchQuery !== null) {
+                currentSearchQuery = null;
+                fetchContent(true);
+            }
+        }
+
+        function handleSearch() {
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            currentSearchQuery = query;
+            fetchContent(true);
+            closeSearch();
+        }
+        
+        function updateMuteButton() {
+            muteBtn.innerHTML = isGloballyMuted ? volumeOffIcon : volumeUpIcon;
+        }
+
+        // --- Event Listener Setup ---
+        searchBtn.addEventListener('click', openSearch);
+        closeSearchBtn.addEventListener('click', closeSearch);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSearch();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !searchOverlay.classList.contains('hidden')) {
+                closeSearch();
+            }
+        });
+
+        muteBtn.addEventListener('click', () => {
+            isGloballyMuted = !isGloballyMuted;
+            updateMuteButton();
+            const activeVideo = document.querySelector('.content-slide.active .album-item.active video');
+            if (activeVideo) {
+                activeVideo.muted = isGloballyMuted;
+            }
+        });
+
+        contentContainer.addEventListener('click', (e) => {
+            if (e.target.closest('.album-nav-btn')) {
+                const btn = e.target.closest('.album-nav-btn');
+                const direction = parseInt(btn.dataset.direction, 10);
+                const slide = btn.closest('.content-slide');
+                const currentIndex = parseInt(slide.dataset.albumIndex, 10);
+                showAlbumItem(slide, currentIndex + direction);
+            }
+        });
+        
+        contentContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (document.getElementById('placeholder')) return;
+            changeSlide(e.deltaY > 0 ? 1 : -1);
+        }, { passive: false });
+
+        contentContainer.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        contentContainer.addEventListener('touchend', (e) => {
+            if (document.getElementById('placeholder')) return;
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            
+            const deltaX = touchStartX - touchEndX;
+            const deltaY = touchStartY - touchEndY;
+
+            // Prioritize vertical swipe
+            if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+                changeSlide(deltaY > 0 ? 1 : -1);
+            } else if (Math.abs(deltaX) > 50) { // Horizontal swipe
+                const activeSlide = document.querySelector('.content-slide.active');
+                if (activeSlide && activeSlide.dataset.isAlbum === 'true') {
+                    const direction = deltaX > 0 ? 1 : -1;
+                    const currentIndex = parseInt(activeSlide.dataset.albumIndex, 10);
+                    showAlbumItem(activeSlide, currentIndex + direction);
+                }
+            }
+        }, { passive: true });
+
+        // --- Initial Setup ---
+        updateMuteButton();
+        fetchContent(true);
+    });
+</script>
+</body>
+</html>
